@@ -223,7 +223,19 @@ class SoccerSpider(scrapy.Spider):
             min = int(pre_time[6:8])
         pre_time_num = hour*60 + min
         return pre_time_num
+    # 将多个support统一化
+    # 若不一致则取0
+    def unification_support(self, *support):
+        result = 0
+        support_len = len(support)
+        support_sum = sum(support)
+        if support_sum == support_len:
+            result = 1
+        elif support_sum == -support_len:
+            result = -1
+        return result
 
+    # 先获取澳门赔率
     def match_macao_parse(self, response):
         handle_httpstatus_list = [404]
         if response.status in handle_httpstatus_list:
@@ -399,7 +411,7 @@ class SoccerSpider(scrapy.Spider):
                 support_direction = -1
 
         # 进行不同优化之间support_direction 的比较，若不一致则放弃该场比赛
-        support_direction = self.unification_support(support_direction, single_match_Item['last_change_support'], single_match_Item['begin_to_ultimate_handicap_change'])
+        support_direction = self.unification_support(support_direction, response.meta['last_change_support'], response.meta['begin_to_ultimate_handicap_change'])
         # 如果support_direction 与 deny 相同，则否决该场比赛support
         if support_direction == single_match_Item['beginning_price_deny']:
             support_direction = 0
