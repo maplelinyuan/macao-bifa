@@ -3,6 +3,7 @@
 import scrapy
 import pdb
 import datetime, time
+# 24.5 1026 1366
 
 # 要查询赔率的公司
 info_days = 200  # 收集多少天的信息
@@ -10,25 +11,32 @@ ultimate_odds_num = 2   # 设定读取最后几个末尾赔率进行比较
 # 算法思想：
 # 比较澳门的终盘赔率与这时必发的赔率，选取澳门相对较低的方向
 # 优化方案
-# 1.读取多个澳门末尾赔率（设定一个参数）可能3比较合适
+# 1.读取多个澳门末尾赔率（设定一个参数）可能3比较合适   √（2）
 # 同样的方法对多个澳门：必发赔率对比较，若结果相同则选取，否则不选
 # 2 判断盘口
-# ①若盘口不同，直接选取澳门方向
-# ②若盘口不同，若满足澳门方向赔率《2.0 则选取澳门方向，否则不选
-# 3 判段水位差距
-# 水位差距达到一定程度才表示支持方向 比如》0.05
-# 4 赛前时间判断
+# ①若盘口不同，直接选取澳门方向 √
+# 3 判段水位差距 √（0.05）
+# 水位差距达到一定程度才表示支持方向 比如》0.06
+
+# 以上曾达到最好水平
+
+# 4 若澳门最后一次降水>0.10 且最终赔率小于1.80则看好该方向 √
+# 5 赛前时间判断 √(540)
 # 若澳门终盘赛前时间（minutes）> 540 （可设定为一个参数）则放弃
+# 6 初盘到终盘盘口的变化若与判断结果相反，则放弃 √
+# 7 初盘大于1.98的赔率若与判断结果相同，则放弃 √
+# 澳门可能的优化方向：
 
 bookmakerID = 84
 bookmakerID2 = 19
 # 50 pinnacle, 250 皇冠 84 澳门 19 必发交易所
 
-# core 算法判断参数
-limit_price_differ = 0.1  # 达到支持所需要的水位差距
-low_handicap_price = 1.8  # 升盘后的水位所限制的最小值
-high_handicap_price = 2.0  # 升盘后的水位所限制的最大值
-ultimate_price_change = 0.08  # 最终水位变化限制
+# 算法判断参数
+limit_max_odds = 2.0    # 限制最大赔率
+limit_price_differ = 0.06  # 达到支持所需要的水位差距
+limit_pre_time = 540    # 临场时间限制
+limit_last_change_price = 0.11  # 最后变化水位的限制
+limit_begin_price = 1.98    # 初盘水位限制
 
 # 盘口字典
 handicap_dict = {
@@ -97,10 +105,11 @@ def compare_handicap(prev, current):
             current_handicap = handicap_dict[current]
         # 判断升降盘
         change_handicap = current_handicap - prev_handicap
-        if (change_handicap) > 0:
-            result = 1
-        else:
-            result = -1
+        if abs(change_handicap) <= 0.25:
+            if change_handicap > 0:
+                result = 1
+            elif change_handicap < 0:
+                result = -1
     return result
 
 
@@ -235,14 +244,48 @@ class SoccerSpider(scrapy.Spider):
             temp_macao_info_dict = {}
             macao_ultimate_handicap = response.xpath('//tbody')[0].xpath('tr')[tr_index].xpath('td')[3].xpath('text()').extract()[0]
             macao_time = response.xpath('//tbody')[0].xpath('tr')[tr_index].xpath('td')[1].xpath('text()').extract()[0]  # 澳门终盘的赛前时间
-            macao_host_price = self.find_odds(response.xpath('//tbody')[0].xpath('tr')[tr_index], 'host')  # 终盘主赔
-            macao_guest_price = self.find_odds(response.xpath('//tbody')[0].xpath('tr')[tr_index], 'guest')  # 终盘客赔
+            # 得到转成分钟赛前时间
+            macao_time_num = self.preTime2num(macao_time)
+            if macao_time_num > limit_pre_time:
+                break
+            macao_host_price = float(self.find_odds(response.xpath('//tbody')[0].xpath('tr')[tr_index], 'host'))  # 终盘主赔
+            macao_guest_price = float(self.find_odds(response.xpath('//tbody')[0].xpath('tr')[tr_index], 'guest'))  # 终盘客赔
             temp_macao_info_dict['macao_handicap'] = macao_ultimate_handicap
             temp_macao_info_dict['macao_time'] = macao_time
             temp_macao_info_dict['macao_host_price'] = macao_host_price
             temp_macao_info_dict['macao_guest_price'] = macao_guest_price
             macao_ultimate_info.append(temp_macao_info_dict)
 
+        last_change_support = 0     # 记录澳门最后变水超过0.10的方向，若与之后判断方向不一致，则放弃该场比赛
+        begin_to_ultimate_handicap_change = 0     # 记录澳门初盘到终盘盘口的变化
+        beginning_price_deny = 0 # 超过初盘水位限制的方向若与其他结果方向相同，则放弃该场比赛
+
+        # 因为可能没有一个澳门赔率满足赛前时间要求，所以要准备提前结束
+        reality_ultimate_odds_num = len(macao_ultimate_info)
+        if reality_ultimate_odds_num == 0:
+            return False
+        # 如果查出来的澳门赔率≥2，则可以进行优化四的判断
+        if reality_ultimate_odds_num >= 2:
+            if macao_ultimate_info[0]['macao_handicap'] == macao_ultimate_info[1]['macao_handicap']:    # 盘口相等才进行判断
+                last_host_price_change = macao_ultimate_info[0]['macao_host_price'] - macao_ultimate_info[1]['macao_host_price']
+                last_guest_price_change = macao_ultimate_info[0]['macao_guest_price'] - macao_ultimate_info[1]['macao_guest_price']
+                if last_host_price_change <= -limit_last_change_price:
+                    last_change_support = 1
+                if last_guest_price_change <= -limit_last_change_price:
+                    last_change_support = -1
+
+        # 若澳门赔率变化大于1，则可以对比初终盘
+        if odds_tr_len > 1:
+            begin_handicap = response.xpath('//tbody')[0].xpath('tr')[-1].xpath('td')[3].xpath('text()').extract()[0]
+            begin_to_ultimate_handicap_change = compare_handicap(begin_handicap, macao_ultimate_info[0]['macao_handicap'])
+
+        # 针对澳门初盘水位
+        macao_begin_host_price = float(self.find_odds(response.xpath('//tbody')[0].xpath('tr')[-1], 'host'))  # 初盘主赔
+        macao_begin_guest_price = float(self.find_odds(response.xpath('//tbody')[0].xpath('tr')[-1], 'guest'))  # 初盘客赔
+        if macao_begin_host_price > limit_begin_price:
+            beginning_price_deny = 1
+        elif macao_begin_guest_price > limit_begin_price:
+            beginning_price_deny = -1
 
         bookmaker_id = bookmakerID2
         match_url = 'http://www.okooo.com/soccer/match/' + response.meta['match_id'] + '/ah/change/' + str(bookmaker_id)
@@ -250,7 +293,9 @@ class SoccerSpider(scrapy.Spider):
                                               'start_time': response.meta['start_time'], 'host_goal': response.meta['host_goal'],
                                               'guest_goal': response.meta['guest_goal'], 'is_end': response.meta['is_end'],
                                               'league_name': response.meta['league_name'], 'macao_ultimate_info':macao_ultimate_info,
-                                              'reality_ultimate_odds_num':reality_ultimate_odds_num}, callback=self.match_bifa_parse)
+                                              'reality_ultimate_odds_num':reality_ultimate_odds_num,'last_change_support':last_change_support,
+                                              'begin_to_ultimate_handicap_change':begin_to_ultimate_handicap_change,
+                                              'beginning_price_deny':beginning_price_deny}, callback=self.match_bifa_parse)
 
     def match_bifa_parse(self, response):
         handle_httpstatus_list = [404]
@@ -294,26 +339,41 @@ class SoccerSpider(scrapy.Spider):
                 if sub_count <= 2:
                     break
                     # 从末尾到头遍历赔率tr
-                current_pre_comp_time = response.xpath('//tbody')[0].xpath('tr')[sub_count-1].xpath('td')[1].xpath('text()').extract()[0]  # 澳门初盘的赛前时间
+                current_pre_comp_time = response.xpath('//tbody')[0].xpath('tr')[sub_count-1].xpath('td')[1].xpath('text()').extract()[0]  # 当前的赛前时间
                 current_pre_comp_time_num = self.preTime2num(current_pre_comp_time)
+                current_handicap_name = response.xpath('//tbody')[0].xpath('tr')[sub_count-1].xpath('td')[3].xpath('text()').extract()[0]  # 当前盘口
                 # 如果当前赛前时间小于澳门初盘的赛前时间，对赔率进行比较，找到澳门-必发 较小的的方向
                 if current_pre_comp_time_num <= macao_pre_comp_time_num:
                     current_host_price = self.find_odds(response.xpath('//tbody')[0].xpath('tr')[sub_count-1], 'host')  # 当前主队赔率
                     current_guest_price = self.find_odds(response.xpath('//tbody')[0].xpath('tr')[sub_count-1], 'guest')  # 当前客队赔率
-                    # 计算澳门与必发之差
-                    host_gap =  macao_host - current_host_price
-                    guest_gap =  macao_guest - current_guest_price
-                    # 选取较小的方向
-                    if (host_gap<0 and guest_gap<0) or (host_gap>0 and guest_gap>0):
-                        if (host_gap - guest_gap) < 0:
-                            support_direction_list[count] = 1
-                        elif (host_gap - guest_gap) > 0:
-                            support_direction_list[count] = -1
-                    elif host_gap!=0 or guest_gap!=0:
-                        if host_gap<0:
-                            support_direction_list[count] = 1
-                        elif guest_gap<0:
-                            support_direction_list[count] = -1
+                    # 判断盘口
+                    handicap_change = compare_handicap(current_handicap_name, macao_ultimate_handicap)
+                    # 若盘口相同比较水位
+                    if handicap_change == 0:
+                        # 计算澳门与必发之差
+                        host_gap =  macao_host - current_host_price
+                        guest_gap =  macao_guest - current_guest_price
+                        # 选取较小的方向
+                        if (host_gap<0 and guest_gap<0) or (host_gap>0 and guest_gap>0):
+                            if abs(host_gap - guest_gap) >= limit_price_differ:
+                                if (host_gap - guest_gap) < 0:
+                                    support_direction_list[count] = 1
+                                elif (host_gap - guest_gap) > 0:
+                                    support_direction_list[count] = -1
+                        elif host_gap!=0 or guest_gap!=0:
+                            if abs(host_gap - guest_gap) >= limit_price_differ:
+                                if host_gap<0:
+                                    support_direction_list[count] = 1
+                                elif guest_gap<0:
+                                    support_direction_list[count] = -1
+                    # 若盘口不同，则选择澳门方向
+                    else:
+                        if handicap_change > 0:
+                            if macao_host <= limit_max_odds:
+                                support_direction_list[count] = 1
+                        else:
+                            if macao_guest <= limit_max_odds:
+                                support_direction_list[count] = -1
                     break
                 sub_count -= 1
             count += 1
@@ -337,6 +397,12 @@ class SoccerSpider(scrapy.Spider):
                 support_direction = 1
             else:
                 support_direction = -1
+
+        # 进行不同优化之间support_direction 的比较，若不一致则放弃该场比赛
+        support_direction = self.unification_support(support_direction, single_match_Item['last_change_support'], single_match_Item['begin_to_ultimate_handicap_change'])
+        # 如果support_direction 与 deny 相同，则否决该场比赛support
+        if support_direction == single_match_Item['beginning_price_deny']:
+            support_direction = 0
 
         # 初步评分
         ultimate_handicap_num = handicap2num(ultimate_handicap)

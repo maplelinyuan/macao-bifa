@@ -85,9 +85,9 @@ def compare_handicap(prev, current):
         # 判断升降盘
         change_handicap = current_handicap - prev_handicap
         if abs(change_handicap) <= 0.25:
-            if (change_handicap) > 0:
+            if change_handicap > 0:
                 result = 1
-            else:
+            elif change_handicap < 0:
                 result = -1
     return result
 

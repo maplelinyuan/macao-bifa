@@ -5,7 +5,7 @@ import pdb
 import datetime, time
 
 # 要查询赔率的公司
-info_days = 200  # 收集多少天的信息
+info_days = 1  # 1表示收集当天信息
 ultimate_odds_num = 2   # 设定读取最后几个末尾赔率进行比较
 # 算法思想：
 # 比较澳门的终盘赔率与这时必发的赔率，选取澳门相对较低的方向
@@ -130,7 +130,7 @@ class match_Item(scrapy.Item):
 
 
 class SoccerSpider(scrapy.Spider):
-    name = 'aoke'
+    name = 'aoke_spider_today'
     allowed_domains = ['www.okooo.com']
     nowadays = datetime.datetime.now().strftime("%Y-%m-%d")  # 获取当前日期
     # tomorrow = (datetime.datetime.now()+datetime.timedelta(days = +1)).strftime("%Y-%m-%d")     # 获取明天日期
@@ -138,7 +138,7 @@ class SoccerSpider(scrapy.Spider):
     calendar_list = []
     # 遍历一年的数据
     for i in range(info_days):
-        add_day = (datetime.datetime.now() + datetime.timedelta(days=-(i + 1))).strftime("%Y-%m-%d")
+        add_day = (datetime.datetime.now() + datetime.timedelta(days=i)).strftime("%Y-%m-%d")
         add_url = "http://www.okooo.com/livecenter/football/?date=" + add_day
         calendar_list.append(add_url)
     start_urls = calendar_list
