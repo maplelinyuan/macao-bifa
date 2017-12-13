@@ -6,7 +6,7 @@ import datetime, time
 # 24.5 1026 1366
 
 # 要查询赔率的公司
-info_days = 200  # 收集多少天的信息
+info_days = 2  # 收集多少天的信息
 ultimate_odds_num = 2   # 设定读取最后几个末尾赔率进行比较
 # 算法思想：
 # 比较澳门的终盘赔率与这时必发的赔率，选取澳门相对较低的方向
@@ -24,7 +24,8 @@ ultimate_odds_num = 2   # 设定读取最后几个末尾赔率进行比较
 # 5 赛前时间判断 √(540)
 # 若澳门终盘赛前时间（minutes）> 540 （可设定为一个参数）则放弃
 # 6 初盘到终盘盘口的变化若与判断结果相反，则放弃 √
-# 7 初盘大于1.98的赔率若与判断结果相同，则放弃 √
+# 7 初盘大于1.98的赔率若与判断结果相同，则放弃（可以取相反数） √
+# 将以上support 求和
 # 澳门可能的优化方向：
 
 bookmakerID = 84
@@ -227,11 +228,15 @@ class SoccerSpider(scrapy.Spider):
     # 若不一致则取0
     def unification_support(self, *support):
         result = 0
-        support_len = len(support)
+        # support_len = len(support)
         support_sum = sum(support)
-        if support_sum == support_len:
+        # if support_sum == support_len:
+        #     result = 1
+        # elif support_sum == -support_len:
+        #     result = -1
+        if support_sum > 0:
             result = 1
-        elif support_sum == -support_len:
+        elif support_sum < 0:
             result = -1
         return result
 
@@ -411,10 +416,7 @@ class SoccerSpider(scrapy.Spider):
                 support_direction = -1
 
         # 进行不同优化之间support_direction 的比较，若不一致则放弃该场比赛
-        support_direction = self.unification_support(support_direction, response.meta['last_change_support'], response.meta['begin_to_ultimate_handicap_change'])
-        # 如果support_direction 与 deny 相同，则否决该场比赛support
-        if support_direction == single_match_Item['beginning_price_deny']:
-            support_direction = 0
+        support_direction = self.unification_support(support_direction, response.meta['last_change_support'], response.meta['begin_to_ultimate_handicap_change'], -response.meta['beginning_price_deny'])
 
         # 初步评分
         ultimate_handicap_num = handicap2num(ultimate_handicap)
