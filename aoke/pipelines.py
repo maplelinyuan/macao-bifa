@@ -32,7 +32,7 @@ class AokePipeline(object):
         try:
             with connection.cursor() as cursor:
                 # 设置当前表名
-                tableName = 'aoke_macao_366'
+                tableName = 'aoke_macao_366_2_2'
                 # 建表
                 build_table = (
                     "CREATE TABLE IF NOT EXISTS "' %s '""

@@ -3,20 +3,33 @@
 import scrapy
 import pdb
 import datetime, time
-# 特殊注意：若看好方向《20分钟内进球，要赶快卖出
+# 初步 31.5 457 16555
+# 特殊注意：
+# 1 若看好方向《20分钟内进球，要赶快卖出
+# 2 看好方向应该是针对初盘的，请尽量购买初盘盘口
 
 # 要查询赔率的公司
-info_days = 366  # 收集多少天的信息
+info_days = 365  # 收集多少天的信息
 
 bookmakerID = 84
 # 50 pinnacle, 250 皇冠 84 澳门 19 必发交易所
 # 算法思想
-# 1. 以澳门升降两个盘口的方向为support
-# 2. 20分钟内看好方向进球，要及时卖出
-# 3 初盘，终盘赔率都小于1.80的反方向不能选取
+# 1.以澳门升降两个盘口的方向为support    √
+# 2.20分钟内看好方向进球，要及时卖出   √
+# 3 初盘，终盘赔率其一小于1.80的反方向不能选取
+# result 3.5 12 1284
+# 都小于
+# result 4.5 13 1284 (得出都小于更优) √ （在没有4的情况）
+# 其一小于1.80反方向不能选取，若都小于直接选取该场
+# result 6 265 1284 不合理
+# 4 若看好方向有》2.00的赔率出现，放弃该场比赛 √
+# result 4.5 7 1284
+# 可能的优化方向
+# 1
 
 # 算法判断参数
-super_low_price = 1.79  # 超低水，《
+super_low_price = 1.80  # 超低水，＜
+limit_max_price = 1.99  # 超高水, ＞
 
 # 盘口字典
 handicap_dict = {
@@ -256,46 +269,62 @@ class SoccerSpider(scrapy.Spider):
 
         count = 0
         tr_len = len(response.xpath('//tbody')[0].xpath('tr[@class=""]'))
+        special_price = False   # 若出现特殊赔率就跳过该场
+        support_deny_1_host = 0  # 用来deny support direction
+        support_deny_1_guest = 0  # 用来deny support direction
         for tr in response.xpath('//tbody')[0].xpath('tr[@class=""]'):
             current_handicap = tr.xpath('td')[3].xpath('text()').extract()[0]
+            current_host_price = float(self.find_odds(tr, 'host'))
+            current_guest_price = float(self.find_odds(tr, 'guest'))
+            # 有时候澳门赔率会出现特殊情况，特别大的情况要排除
+            if current_host_price > 2.15 or current_guest_price > 2.15:
+                special_price = True
+                break
+            # 若出现大于超高水的方向则不能support该方向
+            if current_host_price > limit_max_price:
+                support_deny_1_host = 1
+            if current_guest_price > limit_max_price:
+                support_deny_1_guest = 1
             # 终盘
             if count == 0:
                 ultimate_handicap = current_handicap
-                ultimate_host = float(self.find_odds(tr, 'host'))
-                ultimate_guest = float(self.find_odds(tr, 'guest'))
+                ultimate_host = current_host_price
+                ultimate_guest = current_guest_price
             # 初盘
             if count == tr_len - 1:
                 begin_handicap = current_handicap
-                begin_host = float(self.find_odds(tr, 'host'))
-                begin_guest = float(self.find_odds(tr, 'guest'))
+                begin_host = current_host_price
+                begin_guest = current_guest_price
             if pre_handicap != '':
                 if current_handicap != pre_handicap:
-                    # 因为是倒向遍历，所以变化方向取相反数
-                    if handicap2num(current_handicap) > handicap2num(pre_handicap):
-                        handicap_change_num -= 1
-                    else:
-                        handicap_change_num += 1
+                    # 因为是倒向遍历，所以pre - current
+                    handicap_change_num += handicap2num(pre_handicap) - handicap2num(current_handicap)
+
             pre_handicap = current_handicap
             count += 1
+        # 出现特殊赔率提前结束
+        if special_price:
+            return False
         # 判断初终盘水位：
-        support_deny = 0    # 用来deny support direction
-        if (ultimate_host < super_low_price) or (begin_host < super_low_price):
-            support_deny = -2
-        if (ultimate_guest < super_low_price) or (begin_guest < super_low_price):
-            support_deny = 2
+        support_deny_2 = 0    # 用来deny support direction
+        if (ultimate_host < super_low_price) and (begin_host < super_low_price):
+            support_deny_2 = -1
+        if (ultimate_guest < super_low_price) and (begin_guest < super_low_price):
+            support_deny_2 = 1
 
         # 判断支持方向
         support_direction = 0
-        if handicap_change_num > 1:
-            if (1 - support_deny) > 0:
+        if handicap_change_num >= 0.5:
+            if (1 - support_deny_2) > 0:
                 support_direction = 1
-            elif (1 - support_deny) < 0:
+        elif handicap_change_num < -0.5:
+            if (-1 - support_deny_2) < 0:
                 support_direction = -1
-        elif handicap_change_num < -1:
-            if (-1 - support_deny) < 0:
-                support_direction = -1
-            elif (-1 - support_deny) > 0:
-                support_direction = 1
+
+        if support_direction != 0:
+            # support_deny_1_host 和 support_deny_1_guest可能都取1
+            if (support_direction == support_deny_1_host) or (-support_direction == support_deny_1_guest):
+                support_direction = 0
 
         # 初步评分
         ultimate_handicap_num = handicap2num(ultimate_handicap)
