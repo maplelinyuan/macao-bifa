@@ -6,7 +6,11 @@ import datetime, time
 # 初步 31.5 457 16555
 # 特殊注意：
 # 1 若看好方向《20分钟内进球，要赶快卖出
-# 2 看好方向应该是针对初盘的，请尽量购买初盘盘口
+# 2 看好方向应该是针对初盘的，尽量购买初盘盘口
+# 3 建立反买列表
+
+# 反买联赛列表
+# ['U21欧预','中甲']
 
 # 要查询赔率的公司
 info_days = 365  # 收集多少天的信息
@@ -276,8 +280,8 @@ class SoccerSpider(scrapy.Spider):
             current_handicap = tr.xpath('td')[3].xpath('text()').extract()[0]
             current_host_price = float(self.find_odds(tr, 'host'))
             current_guest_price = float(self.find_odds(tr, 'guest'))
-            # 有时候澳门赔率会出现特殊情况，特别大的情况要排除
-            if current_host_price > 2.15 or current_guest_price > 2.15:
+            # 有时候澳门赔率会出现特殊情况，特别大、特别小的情况要排除
+            if current_host_price > 2.15 or current_guest_price > 2.15 or current_host_price < 1.7 or current_guest_price < 1.7:
                 special_price = True
                 break
             # 若出现大于超高水的方向则不能support该方向
