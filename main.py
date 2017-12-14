@@ -3,6 +3,8 @@ import time
 import datetime
 import json
 import pdb
+import os
+from apscheduler.schedulers.background import BackgroundScheduler
 
 def is_chinese(uchar):
     """判断一个unicode是否是汉字"""
@@ -19,33 +21,13 @@ class Ui_MainWindow(object):
         MainWindow.resize(1000, 600)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
-        self.comboBox = QtWidgets.QComboBox(self.centralwidget)
-        self.comboBox.setGeometry(QtCore.QRect(10, 10, 141, 31))
-        self.comboBox.setObjectName("comboBox")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
-        self.comboBox.addItem("")
         self.pushButton = QtWidgets.QPushButton(self.centralwidget)
-        self.pushButton.setGeometry(QtCore.QRect(500, 20, 75, 23))
+        self.pushButton.setGeometry(QtCore.QRect(700, 20, 75, 23))
         self.pushButton.setObjectName("pushButton")
         self.tableWidget = QtWidgets.QTableWidget(self.centralwidget)
-        self.tableWidget.setGeometry(QtCore.QRect(10, 60, 860, 500))
+        self.tableWidget.setGeometry(QtCore.QRect(10, 60, 750, 500))
         self.tableWidget.setObjectName("tableWidget")
-        self.tableWidget.setColumnCount(8)
+        self.tableWidget.setColumnCount(6)
         self.tableWidget.setRowCount(0)
         item = QtWidgets.QTableWidgetItem()
         self.tableWidget.setHorizontalHeaderItem(0, item)
@@ -59,13 +41,9 @@ class Ui_MainWindow(object):
         self.tableWidget.setHorizontalHeaderItem(4, item)
         item = QtWidgets.QTableWidgetItem()
         self.tableWidget.setHorizontalHeaderItem(5, item)
-        item = QtWidgets.QTableWidgetItem()
-        self.tableWidget.setHorizontalHeaderItem(6, item)
-        item = QtWidgets.QTableWidgetItem()
-        self.tableWidget.setHorizontalHeaderItem(7, item)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 900, 23))
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 800, 23))
         self.menubar.setObjectName("menubar")
         MainWindow.setMenuBar(self.menubar)
         self.statusbar = QtWidgets.QStatusBar(MainWindow)
@@ -75,28 +53,11 @@ class Ui_MainWindow(object):
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
-        self.comboBox.activated[str].connect(self.onActivated)   ##用来将combobox关联的函数
+        self.pushButton.clicked.connect(self.analysingData)   ##用来将切换中/英按钮关联的函数
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "MatchBook_Analysis"))
-        self.comboBox.setItemText(0, _translate("MainWindow", "select league"))
-        self.comboBox.setItemText(1, _translate("MainWindow", "belgium"))
-        self.comboBox.setItemText(2, _translate("MainWindow", "denmark"))
-        self.comboBox.setItemText(3, _translate("MainWindow", "england"))
-        self.comboBox.setItemText(4, _translate("MainWindow", "france"))
-        self.comboBox.setItemText(5, _translate("MainWindow", "germany"))
-        self.comboBox.setItemText(6, _translate("MainWindow", "italy"))
-        self.comboBox.setItemText(7, _translate("MainWindow", "netherlands"))
-        self.comboBox.setItemText(8, _translate("MainWindow", "portugal"))
-        self.comboBox.setItemText(9, _translate("MainWindow", "russia"))
-        self.comboBox.setItemText(10, _translate("MainWindow", "scotland"))
-        self.comboBox.setItemText(11, _translate("MainWindow", "spain"))
-        self.comboBox.setItemText(12, _translate("MainWindow", "turkey"))
-        self.comboBox.setItemText(13, _translate("MainWindow", "argentina"))
-        self.comboBox.setItemText(14, _translate("MainWindow", "australia"))
-        self.comboBox.setItemText(15, _translate("MainWindow", "austria"))
-        self.comboBox.setItemText(16, _translate("MainWindow", "switzerland"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "Macao_Analysis"))
         item = self.tableWidget.horizontalHeaderItem(0)
         item.setText(_translate("MainWindow", "开赛时间"))
         item = self.tableWidget.horizontalHeaderItem(1)
@@ -106,77 +67,148 @@ class Ui_MainWindow(object):
         item = self.tableWidget.horizontalHeaderItem(3)
         item.setText(_translate("MainWindow", "客队名"))
         item = self.tableWidget.horizontalHeaderItem(4)
-        item.setText(_translate("MainWindow", "主p净支持"))
+        item.setText(_translate("MainWindow", "联赛名称"))
         item = self.tableWidget.horizontalHeaderItem(5)
-        item.setText(_translate("MainWindow", "主v净支持"))
-        item = self.tableWidget.horizontalHeaderItem(6)
-        item.setText(_translate("MainWindow", "主vp净支持"))
-        item = self.tableWidget.horizontalHeaderItem(7)
-        item.setText(_translate("MainWindow", "最后更新时间"))
-        self.pushButton.setText(_translate("MainWindow", "切换中/英"))
+        item.setText(_translate("MainWindow", "支持方向"))
+        self.pushButton.setText(_translate("MainWindow", "分析"))
 
-    def onActivated(self, text):  ##用来实现combobox关联的函数
-        if text == 'select league':
-            self.league_name = ''
-            return
-        self.league_name = text
+    # 执行爬虫
+    def exe_crawl(self):
+        crawl_commend = 'scrapy crawl aoke'
+        return os.system(crawl_commend)
+
+    # 打印表格信息
+    def print_form_info(self, match_info_list):
+        print('开始打印分析结果：')
+        # 先清空所有表项
+        self.tableWidget.clearContents()
+        # 设置行数
+        self.tableWidget.setRowCount(len(match_info_list))
+        row_count = 0
+        for i in range(len(match_info_list)):
+            # 循环填入数据
+            col_count = 0
+            for j in range(self.tableWidget.columnCount()):
+                if col_count == 0:
+                    cnt = '%s' % (
+                        match_info_list[i]['start_time']
+                    )
+                elif col_count == 1:
+                    cnt = '%s' % (
+                        match_info_list[i]['host']
+                    )
+                elif col_count == 2:
+                    cnt = '%s' % (
+                        match_info_list[i]['handicap']
+                    )
+                elif col_count == 3:
+                    cnt = '%s' % (
+                        match_info_list[i]['guest']
+                    )
+                elif col_count == 4:
+                    cnt = '%s' % (
+                        match_info_list[i]['league_name']
+                    )
+                elif col_count == 5:
+                    cnt = '%d' % (
+                        match_info_list[i]['support']
+                    )
+                newItem = QtWidgets.QTableWidgetItem(cnt)
+                self.tableWidget.setItem(row_count, col_count, newItem)
+                col_count += 1
+            row_count += 1
+        self.tableWidget.resizeColumnsToContents()
+        self.tableWidget.setSortingEnabled(True)
+
+    # 更新数据
+    def updateData(self):
+        nowatime = datetime.datetime.now().strftime('%Y_%m_%d_%H%M')  # 当前时间
+        self.exe_crawl()
         # 先连接至分析数据库获取上次所用分析表的时间
-        db = QtSql.QSqlDatabase().addDatabase("QMYSQL")
-        db.setDatabaseName("match_" + text + "_analysis")
-        db.setHostName("127.0.0.1")  # set address
-        db.setUserName("root");  # set user name
-        db.setPassword("");  # set user pwd
-        if not db.open():
-            # 打开失败
-            return db.lastError()
-        print("连接至 match_",text,"_analysis success!")
-        # 创建QsqlQuery对象，用于执行sql语句
-        query = QtSql.QSqlQuery()
-        build_table = (
-            "CREATE TABLE IF NOT EXISTS "' %s '""
-            "(event_id VARCHAR(20) NOT NULL PRIMARY KEY,"
-            "host_name VARCHAR(20) NOT NULL,"
-            "guest_name VARCHAR(20) NOT NULL,"
-            "handicap_name VARCHAR(20) NOT NULL,"
-            "start_time VARCHAR(20) NOT NULL,"
-            "host_price_net_support INT(4) NOT NULL DEFAULT 0,"
-            "host_volume_net_support INT(4) NOT NULL DEFAULT 0,"
-            "host_volume_price_net_support INT(4) NOT NULL DEFAULT 0,"
-            "is_end INT(4) DEFAULT 0,"
-            "handicap_result FLOAT(4),"  # 9 表示未知
-            "last_updatetime VARCHAR(20))"
-        )
-        query.exec(build_table % 'analysis_result')
-        # 查询出当前数据库中的所有表名
-        query.exec('SELECT * FROM analysis_result')
-        query.next()
-        # 保存最后分析用的表上的时间，以便之后分析跳过用过的表
-        if query.size() > 0:
-            last_load_data_time = time.mktime(time.strptime(query.value(10), '%Y-%m-%d %H:%M:%S'))
-        else:
-            last_load_data_time = 0
-        db.close()
-        # 连接数据库
         db = QtSql.QSqlDatabase().addDatabase("QMYSQL")
         db.setDatabaseName("aoke_macao_complete")
         db.setHostName("127.0.0.1")  # set address
         db.setUserName("root")  # set user name
-        db.setPassword("")  # set user pwd
-        # 打开数据库
+        db.setPassword("1994")  # set user pwd
         if not db.open():
             # 打开失败
             return db.lastError()
-        print("连接至 match_",text,"success!")
-
-        # 保存比赛分析结果的字典，用event_id 映射单场比赛
-        match_analysis_result = {}
-
+        print("连接至 aoke_macao_complete success!")
         # 创建QsqlQuery对象，用于执行sql语句
         query = QtSql.QSqlQuery()
-        # 查询出当前数据库中的所有表名
-        query.exec('SHOW TABLES FROM match_'+text)
+        # 查询出刚才更新的表
+        table_name = 'aoke_macao_complete_' + nowatime
+        query.exec('SELECT * FROM ' + table_name)
         query.next()
+        match_info_list = []
+        for i in range(query.size()):
+            match_info = {}
+            match_info['start_time'] = query.value(4)
+            match_info['host'] = query.value(1)
+            match_info['handicap'] = query.value(8)
+            match_info['guest'] = query.value(2)
+            match_info['league_name'] = query.value(3)
+            match_info['support'] = query.value(9)
+            match_info_list.append(match_info)
+            query.next()
+        if len(match_info_list) > 0:
+            self.print_form_info(match_info_list)
+        db.close()
+        print('断开数据库')
 
+    # 开始拉取今天数据并分析
+    def analysingData(self):
+        nowatime = datetime.datetime.now().strftime('%Y_%m_%d_%H%M')    # 当前时间
+        self.exe_crawl()
+        # 先连接至分析数据库获取上次所用分析表的时间
+        db = QtSql.QSqlDatabase().addDatabase("QMYSQL")
+        db.setDatabaseName("aoke_macao_complete")
+        db.setHostName("127.0.0.1")  # set address
+        db.setUserName("root")  # set user name
+        db.setPassword("1994")  # set user pwd
+        if not db.open():
+            # 打开失败
+            print('打开数据库失败！')
+            return db.lastError()
+        print("连接至 aoke_macao_complete success!")
+        # 创建QsqlQuery对象，用于执行sql语句
+        query = QtSql.QSqlQuery()
+        # 查询出刚才更新的表
+        table_name = 'aoke_macao_complete_'+nowatime
+        query.exec('SELECT * FROM '+table_name)
+        query.next()
+        match_info_list = []
+        for i in range(query.size()):
+            start_time = time.strptime(query.value(4), "%Y-%m-%d %H:%M")
+            mk_start_time = time.mktime(start_time)
+            match_id = query.value(0)
+            if (time.time() - mk_start_time) < 0:
+                f = open('timer_id.txt', 'r')
+                timer_text = f.read()
+                timer_list = timer_text.split(',')
+                f.close()
+                if not match_id in timer_list:
+                    scheduler = BackgroundScheduler()
+                    scheduler.add_job(self.updateData, 'date', run_date=time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(mk_start_time))) # 在指定的时间，只执行一次
+                    print('设定定时任务,match_id:',match_id,'开始时间',start_time)
+                    # 将定时执行的比赛id写入,防止重复
+                    f = open('timer_id.txt', 'a')
+                    f.write(match_id+',')
+                    f.close()
+                    scheduler.start()  # 这里的调度任务是独立的一个线程
+            match_info = {}
+            match_info['start_time'] = query.value(4)
+            match_info['host'] = query.value(1)
+            match_info['handicap'] = query.value(8)
+            match_info['guest'] = query.value(2)
+            match_info['league_name'] = query.value(3)
+            match_info['support'] = query.value(9)
+            match_info_list.append(match_info)
+            query.next()
+        if len(match_info_list) > 0:
+            self.print_form_info(match_info_list)
+        db.close()
+        print('断开数据库')
 
 if __name__ == "__main__":
     import sys
