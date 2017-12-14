@@ -3,27 +3,31 @@
 import scrapy
 import pdb
 import datetime, time
+import re
+import json
 # 初步 31.5 457 16555
 # 特殊注意：
-# 1 若看好方向《20分钟内进球，要赶快卖出
-# 2 看好方向应该是针对初盘的，尽量购买初盘盘口
+# 1 澳门终盘1.25 和 1.5 的盘口是最稳的
+# 2 看好方向应该是针对初盘的
 # 3 建立反买列表
 
+# result 2.1 120 37444 其中2017 14 4 2016 18 17 2015和2014不行，推测是近两年有比较准确的计算方法进场
+
 # 反买联赛列表
-# ['U21欧预','中甲']
+# ['U21欧预','国王杯']
 
 # 要查询赔率的公司
-info_days = 365  # 收集多少天的信息
+info_days = 1  # 收集多少天的信息  1表示当天分析
 
 bookmakerID = 84
 # 50 pinnacle, 250 皇冠 84 澳门 19 必发交易所
 # 算法思想
 # 1.以澳门升降两个盘口的方向为support    √
-# 2.20分钟内看好方向进球，要及时卖出   √
+# 2.<=20分钟内看好方向进球，要及时卖出   √
 # 3 初盘，终盘赔率其一小于1.80的反方向不能选取
-# result 3.5 12 1284
+# result 3.5 12 1284 （30天） 5 23 11499 若执行反买则11 23 ( 365天 )  √
 # 都小于
-# result 4.5 13 1284 (得出都小于更优) √ （在没有4的情况）
+# result 4.5 13 1284 （30天）4 26 11499 若执行反买则12 26（365天）
 # 其一小于1.80反方向不能选取，若都小于直接选取该场
 # result 6 265 1284 不合理
 # 4 若看好方向有》2.00的赔率出现，放弃该场比赛 √
@@ -34,6 +38,7 @@ bookmakerID = 84
 # 算法判断参数
 super_low_price = 1.80  # 超低水，＜
 limit_max_price = 1.99  # 超高水, ＞
+inverse_league_list = ['U21欧预','国王杯']
 
 # 盘口字典
 handicap_dict = {
@@ -144,7 +149,10 @@ class SoccerSpider(scrapy.Spider):
     calendar_list = []
     # 遍历一年的数据
     for i in range(info_days):
-        add_day = (datetime.datetime.now() + datetime.timedelta(days=-(i + 1))).strftime("%Y-%m-%d")
+        if info_days == 1:
+            add_day = (datetime.datetime.now() + datetime.timedelta(days=i)).strftime("%Y-%m-%d")   # info_days == 1 表示获取当天分析
+        else:
+            add_day = (datetime.datetime.now() + datetime.timedelta(days=-(i + 1))).strftime("%Y-%m-%d")
         add_url = "http://www.okooo.com/livecenter/football/?date=" + add_day
         calendar_list.append(add_url)
     start_urls = calendar_list
@@ -154,10 +162,8 @@ class SoccerSpider(scrapy.Spider):
             yield scrapy.Request(url)
 
     def parse(self, response):
-        # 获取进球数据
-        # response.xpath('//script')[9].xpath('text()').extract()[0].replace('var initData = ', '').replace(' ','').strip().replace(
-        #     "var controller = 'football';", '').replace("var LotteryType = 'IndexPage';", '').replace(
-        #     "var MatchIDs = '1000344,1000806,999733';",'').replace("",'')
+        # 获取进球数据,并保存在本类中，供最后读取使用
+        # self.get_goal_info = json.loads(re.findall(r"{.*]}{1}",response.xpath('//script/text()').extract()[2])[0])
 
         for tr in response.css('div[id=livescore_table]').css('tr'):
             if len(tr.xpath('@id')) > 0:
@@ -182,7 +188,7 @@ class SoccerSpider(scrapy.Spider):
                     guest_goal = int(guest_goal_text[0])
                 # 判断是否完场
                 get_if_end = tr.xpath('td')[3].xpath('span/text()').extract()
-                if len(get_if_end) > 0 and get_if_end[0] == '完':
+                if len(get_if_end) > 0 and (get_if_end[0] == '完' or get_if_end[0] == '加时完' or get_if_end[0] == '点球完'):
                     is_end = True
                 else:
                     is_end = False
@@ -311,9 +317,9 @@ class SoccerSpider(scrapy.Spider):
             return False
         # 判断初终盘水位：
         support_deny_2 = 0    # 用来deny support direction
-        if (ultimate_host < super_low_price) and (begin_host < super_low_price):
+        if (ultimate_host < super_low_price) or (begin_host < super_low_price):
             support_deny_2 = -1
-        if (ultimate_guest < super_low_price) and (begin_guest < super_low_price):
+        if (ultimate_guest < super_low_price) or (begin_guest < super_low_price):
             support_deny_2 = 1
 
         # 判断支持方向
@@ -329,6 +335,10 @@ class SoccerSpider(scrapy.Spider):
             # support_deny_1_host 和 support_deny_1_guest可能都取1
             if (support_direction == support_deny_1_host) or (-support_direction == support_deny_1_guest):
                 support_direction = 0
+
+        # 根据反买列表反向支持
+        if single_match_Item['league_name'] in inverse_league_list:
+            support_direction = -support_direction
 
         # 初步评分
         ultimate_handicap_num = handicap2num(ultimate_handicap)
@@ -346,6 +356,20 @@ class SoccerSpider(scrapy.Spider):
                 match_algorithm_score = net_handicap
             elif support_direction == -1:
                 match_algorithm_score = -net_handicap
+
+        # # 读取进球数据
+        # try:
+        #     match_goal_info = self.get_goal_info[single_match_Item['match_id']]
+        #     if len(match_goal_info) > 0:
+        #         # 目前只记录第一个进球，1表示主队，2表示客队,并且记录时间，如果记录时间《20，则支持该方向的评分为0.2
+        #         first_goal_team = match_goal_info[0]['team']
+        #         first_goal_time = match_goal_info[0]['time']
+        #         if (support_direction == first_goal_team) and first_goal_time <= 20:
+        #             match_algorithm_score = 0.2
+        #         if support_direction == -1 and first_goal_team == 2 and first_goal_time <= 20:
+        #             match_algorithm_score = 0.2
+        # except:
+        #     print('没有查找到当前比赛的进球数据')
         single_match_Item['macao_handicap'] = ultimate_handicap
         single_match_Item['macaoBifa_support_direction'] = support_direction  # 该算法支持方向
         single_match_Item['algorithm_score'] = match_algorithm_score  # 该算法本场比赛评分
