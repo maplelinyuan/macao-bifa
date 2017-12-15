@@ -23,16 +23,16 @@ class AokePipeline(object):
             'host' : 'localhost',
             'user' : 'root',
             'password' : '1994',
-            'db' : 'aoke_macao_complete',
+            'db' : 'macao_cold_match',
             'charset' : 'utf8mb4',
             'cursorclass' : pymysql.cursors.DictCursor
         }
         connection = pymysql.connect(**config)
-        print('连接至数据库aoke_macao_complete')
+        print('连接至数据库macao_cold_match')
         try:
             with connection.cursor() as cursor:
                 # 设置当前表名
-                tableName = 'aoke_macao_complete_'+nowatime
+                tableName = 'macao_cold_match_'+nowatime
                 # 建表
                 build_table = (
                     "CREATE TABLE IF NOT EXISTS "' %s '""
